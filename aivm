@@ -1,0 +1,233 @@
+#!/usr/bin/python
+#-*- coding: utf-8 -*-
+
+import os
+import sys
+import argparse
+import subprocess
+import ConfigParser as PyConfigParser
+
+
+from lib.Guest import Guest
+from lib.Units import Units
+from lib.System import System
+from lib.ConfigParserXML import ConfigParser
+from lib.VirtInstall import VirtInstall
+from lib.Network import Network, NetworkSetter
+from lib.DefaultConfig import DC
+from lib.Logging import Logging
+
+
+def checkUniquenesGuests(guests):
+	# check hostnames
+	objectSet = set(map(lambda x: x.getHostName(), guests))
+	
+	if len(guests) != len(objectSet):
+		Logging.errorExit("Some of guests hostname are same. It's necessary to have at least hostname, storage file and IP addresses different.")
+
+		return False
+	
+	
+	# check storages
+	objectSet = set(map(lambda x: x.getStorageFile(), guests))
+	
+	if len(guests) != len(objectSet):
+		Logging.errorExit("Some of guests storage file are same. It's necessary to have at least hostname, storage file and IP addresses different.")
+
+		return False
+	
+	
+	# check IPv4 settings of guest
+	setGuests = filter(lambda x: x.getIPv4(), guests)
+	objectSet = set(map(lambda x: x.getIPv4(), guests))
+	
+	if len(setGuests) > len(objectSet):
+		Logging.errorExit("Some of guests IPv4 address are same. It's necessary to have at least hostname, storage file and IP addresses different.")
+		
+		return False
+	
+	
+	# check IPv6 settings of guest
+	setGuests = filter(lambda x: x.getIPv6(), guests)
+	objectSet = set(map(lambda x: x.getIPv6(), guests))
+	
+	if len(setGuests) > len(objectSet):
+		Logging.errorExit("Some of guests IPv6 address are same. It's necessary to have at least hostname, storage file and IP addresses different.")
+
+		return False
+	
+	return True
+
+
+def main():
+	# set args for parsing
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-g", "--guests", required=True, metavar="PATH",
+			help="path to file with guests config")
+	parser.add_argument("--check-system", action="store_true",
+			help="check system - support virtualization")
+	parser.add_argument("--check-guests", action="store_true",
+			help="do --check-system and check guests config")
+	parser.add_argument("--only-prepare-install", action="store_true",
+			help=("do --check-guests and prepare installation - e.g."
+					 "download and mount image"))
+	parser.add_argument("--only-install", action="store_true",
+			help="do --only-prepare-install and then install guests")
+	parser.add_argument("--only-configure-guests", action="store_true",
+			help=("do --only-install and configure installed guests,"
+					 "but not set DNS"))
+	
+	if len(sys.argv) < 2:
+		sys.argv.append("-h")
+	
+	# parse args
+	args = parser.parse_args()
+	
+	# according to args set step
+	step = 0
+	if args.check_system:
+		step = 1
+	elif args.check_guests:
+		step = 2
+	elif args.only_prepare_install:
+		step = 3
+	elif args.only_install:
+		step = 4
+	elif args.only_configure_guests:
+		step = 5
+	else:
+		step = 100
+	
+	
+	# check cpu's support of virtualization
+	Logging.info("Checking system...")
+	
+	if not System.checkCPU():
+		Logging.errorExit("Your system does not support KVM virtualization.")
+	
+	# --check-system
+	if step <= 1:
+		Logging.info("OK")
+		
+		return
+	
+	
+	# check path of guests XML
+	if (not os.path.exists(args.guests)
+				or not os.access(args.guests, os.R_OK)):
+		Logging.errorExit("File with guests don't exists or is not readable.")
+	
+	
+	# parsing guests XML
+	try:
+		guests = ConfigParser(args.guests).parse()
+	except:
+		Logging.errorExit("Error while parsing guest config file. Please check it.")
+	
+	
+	# check there is any guest in XML
+	Logging.info("Checking guests configuration...")
+	
+	if not guests:
+		Logging.errorExit("No guest could be parsed. Please check guest config file.")
+	
+	
+	# check requested sizes of guests
+	try:
+		if not System.checkEnoughMemory(guests):
+			Logging.errorExit("There is not enough size of memory for host system.")
+	except Exception as e:
+		Logging.errorExit(e)
+	
+	
+	# check uniqueness of guests
+	if not checkUniquenesGuests(guests):
+		Logging.errorExit("Guests are not unique.")
+	
+	
+	
+	# check every image paths
+	images = set(map(lambda x: x.getImageFile(), guests))
+	
+	if None in images:
+		Logging.errorExit("Some of guests has wrong image file.")
+	
+	
+	
+	# create network object from network XML config
+	network = Network(DC.get("network", "config"))
+	
+	# check network uniqueness
+	if not network.check():
+		Logging.errorExit("There is probably libvirt network with same name. Change name in network settings.")
+	
+	# create new libvirt network
+	try:
+		network.create()
+	except Exception as e:
+		Logging.errorExit(e)
+	
+	# --check-guests
+	if step <= 2:
+		Logging.info("OK")
+		return
+	
+	
+	for guest in guests:
+		# set network to every guest
+		guest.setNetwork(network)
+		
+		# install vm
+		try:
+			guest.install(onlyPrepare=step <= 3)
+		except Exception as e:
+			Logging.errorExit(e)
+	
+	# --only-install
+	if step <= 4:
+		return
+	
+	dns = {}
+	
+	# set network for every guest
+	for guest in guests:
+		try:
+			networkSetter = NetworkSetter(guest)
+			dns.update(networkSetter.run())
+		except Exception as e:
+			Logging.errorExit(e)
+	
+	# --only-configure-guests
+	if step <= 5:
+		return
+	
+	# set up DNS
+	try:
+		network.insertDNS(dns)
+	except Exception as e:
+		Logging.errorExit(e)
+	
+	
+	
+	# inform user about VMs
+	for guest in guests:
+		hostname = guest.getHostName()
+		entries = filter(lambda e: e[1] == hostname, dns.items())
+		
+		text = "-"*30
+		text += "\n"
+		text += str(guest)
+		text += ", DNS entries: "
+		
+		if entries:
+			ips = map(lambda e: e[0], entries)
+			
+			text += "%s = %s" % (hostname, ", ".join(ips))
+		else:
+			text += "-"
+		
+		
+		Logging.info(text)
+
+if __name__ == "__main__":
+	main()

@@ -1,0 +1,87 @@
+<?xml version="1.0" ?>
+<install-vm>
+	<guests>
+		<guest>
+			<hostname>
+				vm0
+			</hostname>
+			<memory-size>
+				1 GiB
+			</memory-size>
+			<image-file>
+<!-- 				/root/Downloads/SL-63-x86_64-2012-08-02-Install-DVD.iso -->
+				<!--http://ftp.fi.muni.cz/pub/linux/fedora-releases/17/Fedora/x86_64/os/-->
+				http://ftp.fi.muni.cz/pub/linux/fedora-releases/18/Fedora/x86_64/iso/Fedora-18-x86_64-netinst.iso
+<!-- 				http://ftp.fi.muni.cz/pub/linux/fedora-releases/18/Fedora/x86_64/os/ -->
+<!-- 				http://ftp.fi.muni.cz/pub/linux/centos/6.4/os/x86_64/ -->
+			</image-file>
+			<ks-file>
+<!-- 				/root/svn/xchury1_bp/ks/centos6.cfg -->
+				./ks/fedora18.cfg
+			</ks-file>
+			<storage-file pool="default" size="5 GiB">
+				vm0.img
+			</storage-file>
+			<network-settings-file>
+				./etc/network/rhel-based.conf
+			</network-settings-file>
+			<ipv4 method="static">
+				<address>
+					192.168.31.22
+				</address>
+				<netmask>
+					255.255.255.0
+				</netmask>
+				<gateway>
+					192.168.31.1
+				</gateway>
+			</ipv4>
+			<ipv6 method="static">
+				<address>
+					fd00::2
+				</address>
+				<netmask>
+					/64
+				</netmask>
+				<gateway>
+					fd00::1
+				</gateway>
+			</ipv6>
+		</guest>
+		<guest>
+			<hostname>
+				vm1
+			</hostname>
+			<memory-size>
+				1 GiB
+			</memory-size>
+			<image-file>
+				http://ftp.fi.muni.cz/pub/linux/fedora-releases/18/Fedora/x86_64/os/
+<!-- 				http://ftp.fi.muni.cz/pub/linux/centos/6.4/os/x86_64/ -->
+			</image-file>
+			<ks-file>
+<!-- 				/root/svn/xchury1_bp/ks/centos6.cfg -->
+				./ks/fedora18.cfg
+			</ks-file>
+			<storage-file pool="default" size="5 GiB">
+				vm1.img
+			</storage-file>
+			<network-settings-file>
+				./etc/network/rhel-based.conf
+			</network-settings-file>
+			<!--<ipv4 method="static">
+				<address>
+					192.168.1.3
+				</address>
+				<netmask>
+					/24
+				</netmask>
+				<gateway>
+					192.168.1.1
+				</gateway>
+			      </ipv4>-->
+			<ipv4 method="dhcp"/>
+			<ipv6 method="dhcp"/>
+		</guest>
+	</guests>
+</install-vm>

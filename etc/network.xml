@@ -1,0 +1,10 @@
+<network>
+  <name>aivm</name>
+  <forward mode='nat'/>
+  <ip family='ipv4' address='192.168.31.1' netmask='255.255.255.0'>
+	  <dhcp>
+		  <range start='192.168.31.2' end='192.168.31.17' />
+	  </dhcp>
+  </ip>
+  <ip family='ipv6' address='fd00::1' prefix='64'></ip>
+</network>

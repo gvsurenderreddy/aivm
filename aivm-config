@@ -1,0 +1,300 @@
+#!/usr/bin/python
+#-*- coding: utf-8 -*-
+
+import sys
+import os
+import xml.dom.minidom as xml
+
+"""
+navrh konfiguracniho XML:
+
+<?xml version="1.0" ?>
+<aivm>
+	<guests>
+		<guest>
+			<hostname>...</hostname>
+			<memory-size>...</memory-size>
+			<image-file>...</image-file>
+			<ks-file>...</ks-file>
+			<storage-file>...</storage-file>
+			<ipv4 method="static|dhcp">
+				<address>...</address>
+				<netmask>...</netmask>
+				<gateway>...</gateway>
+			</ipv4>
+			<ipv6 method="static|dhcp">
+				<address>...</address>
+				<netmask>...</netmask>
+				<gateway>...</gateway>
+			</ipv6>
+		</guest>
+		<guest>
+			...
+		</guest>
+		...
+	</guests>
+</aivm>
+"""
+
+def inputConfig(message, default, valueType):
+	"""
+		Print request to stdout and return the answer.
+		
+		Keyword arguments:
+		message -- text of request
+		default -- value which will be returned when there is no answer
+		valueType -- type object
+	"""
+	
+	sys.stdout.write("%s [default %s]: " % (message, default))
+	sys.stdout.flush()
+	param = sys.stdin.readline()[:-1]
+	
+	if not param:
+		return default
+	
+	try:
+		return valueType(param)
+	except ValueError as error:
+		printError(error)
+
+
+def printError(message):
+	"""
+		Print error message and exit program.
+		
+		Keyword arguments:
+		message -- text of error message
+	"""
+	
+	sys.stderr.write("%s\n" % str(message))
+	
+	exit(-1)
+
+
+def createTag(document, tagName, value):
+	"""
+		Return new XML DOM element.
+		
+		Keyword arguments:
+		document -- XML DOM document
+		tagName -- name of new tag
+		value -- element value
+	"""
+	
+	tagText	= document.createTextNode(str(value))
+	
+	tag	= document.createElement(tagName)
+	tag.appendChild(tagText)
+	
+	return tag
+
+
+
+def inputDHCPConfig(document, tagName, ipName):
+	"""
+		Return IP element with range of addresses for DHCP.
+		
+		Keyword arguments:
+		document -- XML DOM document
+		tagName -- name of IP tag
+		ipName -- name of Internet Protocol (with version)
+	"""
+	
+	value = inputConfig("Enable %s DHCP?" % ipName, "false", str)
+
+	if value != "" and value.lower() != "false":
+		dhcp = document.createElement(tagName)
+		
+		value = inputConfig("Range addresses for %s DHCP" % ipName, None, str)
+		dhcp.appendChild(createTag(document, "range", value))
+		
+		return dhcp
+	
+	return None
+
+
+
+def inputGuestIPConfig(document, i, tagName, ipName, defaultMask):
+	"""
+		Return configuration of guest IP.
+		
+		Keyword arguments:
+		document -- XML DOM document
+		i -- guest number
+		tagName -- name of IP tag
+		ipName -- name of Internet Protocol (with version)
+		defaultMask -- default mask of IP
+	"""
+	
+	value = inputConfig("Enable %s on Guest%i?" % (ipName, i), "false", str)
+	
+	if value != "" and value.lower() != "false":
+		ip = document.createElement(tagName)
+		
+		value = inputConfig("Guest%i %s setting address method (static or dhcp)" % (i, ipName), "dhcp", str)
+		ip.setAttribute("method", value)
+		
+		if value.lower() == "static":
+			value = inputConfig("Guest%i %s address" % (i, ipName), None, str)
+			ip.appendChild(createTag(document, "address", value))
+			
+			value = inputConfig("Guest%i %s netmask" % (i, ipName), defaultMask, str)
+			ip.appendChild(createTag(document, "netmask", value))
+			
+			value = inputConfig("Guest%i %s gateway" % (i, ipName), None, str)
+			ip.appendChild(createTag(document, "gateway", value))
+		
+		elif value.lower() != "dhcp":
+			printError("This parameter has only 2 allowed values: 'static' or 'dhcp'")
+		
+		return ip
+	
+	return None
+
+
+
+def inputGuestsConfig(document, numberOfGuests):
+	"""
+		Return configurations for all guests.
+		
+		Keyword arguments:
+		document -- XML DOM document
+		numberOfGuests -- guests count
+	"""
+	
+	guests = document.createElement("guests")
+	
+	for i in range(0, numberOfGuests):
+		guest = document.createElement("guest")
+		
+		print("==================== Guest%i ====================" % i)
+		
+		# common section
+		
+		value = hostname = inputConfig("Guest%i hostname" % i, "vm%i" % i, str)
+		guest.appendChild(createTag(document, "hostname", value))
+		
+		value = inputConfig("Guest%i memory size" % i, "1 GiB", str)
+		guest.appendChild(createTag(document, "memory-size", value))
+		
+		value = None
+		
+		while not value:
+			value = inputConfig("Guest%i install image file path/HTTP URL" % i, None, str)
+			
+			if not value:
+				print("This parameter is required. Please fill install image file path or HTTP URL of operating system.")
+		
+		guest.appendChild(createTag(document, "image-file", value))
+		
+		value = inputConfig("Guest%i kickstart file path/HTTP URL" % i, None, str)
+		guest.appendChild(createTag(document, "ks-file", value))
+		
+		# Storage section
+		value = inputConfig("Guest%i name of storage file" % i, "%s.img" % hostname, str)
+		storageTag = createTag(document, "storage-file", value)
+		
+		value = inputConfig("Guest%i storage pool name" % i, "default", str)
+		storageTag.setAttribute("pool", value)
+		
+		value = inputConfig("Guest%i storage size" % i, "5 GiB", str)
+		storageTag.setAttribute("size", value)
+		
+		guest.appendChild(storageTag)
+		
+		
+		value = inputConfig("Guest%i network settings path" % i, None, str)
+		guest.appendChild(createTag(document, "network-settings-file", value))
+		
+		# IPv4 section
+		
+		value = inputGuestIPConfig(document, i, "ipv4", "IPv4", "/24")
+		if value:
+			guest.appendChild(value)
+		
+		# IPv6 section
+		
+		value = inputGuestIPConfig(document, i, "ipv6", "IPv6", "/64")
+		if value:
+			guest.appendChild(value)
+		
+		
+		guests.appendChild(guest)
+	
+	return guests
+
+
+def main():
+	"""
+		Main function. Nothing returns.
+	"""
+	
+	# default values
+	filePath = "./config.xml"
+
+	# print help
+	if "-h" in sys.argv or "--help" in sys.argv or "help" in sys.argv:
+		print("""Usage: %s [-h] <config-file-path>
+
+Arguments:
+   config-file-path			path to file where will be the configuration written (default %s)
+
+Options:
+   -h, --help, help		prints this help and exit
+	""" % (sys.argv[0], filePath))
+		
+		exit(0)
+
+	# set config file
+	elif len(sys.argv) == 2:
+		filePath = sys.argv[1]
+
+	# there are too much arguments
+	elif len(sys.argv) > 2:
+		printError("This program takes only one argument, use option -h.")
+		
+
+	# main xml document and root element
+	document = xml.Document()
+	installVM = document.createElement("aivm")
+	document.appendChild(installVM)
+	
+	# overwrite existing file?
+	if os.path.exists(filePath):
+		value = inputConfig("File '%s' exists and will be overwritten. Continue?" % filePath, "false", str)
+		
+		if value == "" or value.lower() == "false":
+			exit(0)
+	
+	print("Configuration will be written to: %s\n" % filePath)
+	
+	# get number of guests
+	numberOfGuests = inputConfig("Number of guests", 2, int)
+	
+	if numberOfGuests < 1:
+		printError("Number of guests must be greater then 0.")
+	
+	
+	# config guests
+	guests = inputGuestsConfig(document, numberOfGuests)
+	installVM.appendChild(guests)
+	
+	
+	# write config file
+	try:
+		configFile = open(filePath, "w")
+		document.writexml(configFile, "", "\t", "\n")
+		configFile.close()
+	except IOError as error:
+		printError(error)
+
+#==========================================================
+
+if __name__ == "__main__":
+	try:
+		main()
+	except KeyboardInterrupt as error:
+		printError("Exiting, no file was created.")
+	
+	exit(0)
