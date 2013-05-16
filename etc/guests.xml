@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<install-vm>
+<aivm>
 	<guests>
 		<guest>
 			<hostname>
@@ -84,4 +84,4 @@
 			<ipv6 method="dhcp"/>
 		</guest>
 	</guests>
-</install-vm>
+</aivm>
