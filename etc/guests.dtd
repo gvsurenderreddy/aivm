@@ -1,0 +1,41 @@
+<!ELEMENT aivm - - (guests) >
+
+<!ELEMENT guests - - (guest+) >
+
+<!ELEMENT guest - - (hostname, memory-size, image-file, ks-file?, storage-file, network-settings-file?, ipv4?, ipv6?) >
+
+<!-- guest elements -->
+
+<!ELEMENT hostname - - (#PCDATA) >
+
+<!ELEMENT memory-size - - (#PCDATA) >
+
+<!ELEMENT image-file - - (#PCDATA) >
+
+<!ELEMENT ks-file - - (#PCDATA) >
+
+<!ELEMENT storage-file - - (#PCDATA) >
+<!ATTLIST storage-file
+    pool     CDATA     #REQUIRED
+    size     CDATA     #REQUIRED
+>
+
+<!ELEMENT network-settings-file - - (#PCDATA) >
+
+<!ELEMENT ipv4 - - (address, netmask, gateway)? >
+<!ATTLIST ipv4
+    method     (static|dhcp)     #REQUIRED
+>
+
+<!ELEMENT ipv6 - - (address, netmask, gateway)? >
+<!ATTLIST ipv6
+    method     (static|dhcp)     #REQUIRED
+>
+
+<!-- ipvX elements -->
+
+<!ELEMENT address - - (#PCDATA) >
+
+<!ELEMENT netmask - - (#PCDATA) >
+
+<!ELEMENT gateway - - (#PCDATA) >
